@@ -1,0 +1,201 @@
+---
+title: "Procesamiento de datos espaciales en R: Parte 1 (práctica)"
+author: "Stephanie Orellana Bello"
+date: "<img src=\"fig/satelite.png\" height=\"200px\"><br> 05 de julio, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## 1.- Cargar datos
+### Antes de empezar...
+
+Al igual que en los SIG tradicionales, existen funciones diferentes para llamar a diferentes tipos de datos. Por lo que hay que
+  tener claro si lo que queremos cargar es un raster, un shapefile o queremos crear unos puntos a partir de una tabla.
+
+### 1.1 Cargar rasters y vectores
+
+Se requiere tener instalado el paquete raster. Existen otros como rgdal que también sirven.
+    
+    ```r
+    # install.packages("raster")
+    library(raster) # cargar la librería
+    ras <- raster("datos/L20171117.tif")
+    cot<- shapefile("datos/cot.shp")
+    ```
+<font color='red'> Ejercicio: explorar tabla de atributos del objeto cot utilizando cot$ </font>
+    
+
+#### Hacer un gráfico rápido
+    ```r
+    plot(ras)
+    plot(cot, add=T)
+    ```
+    
+### 1.2 Cargar datos desde un dataframe
+
+Dependiendo del formato en que se encuentren mis datos es la función que utilizaré para cargarlos como dataframe. En este caso, como son archivos
+Excel .xlsx usaré el paquete "openxlsx"
+
+    ```r
+    # install.packages("openxlsx")
+    library(openxlsx) # cargar la librería
+    dat<-read.xlsx("datos/datostempypp.xlsx")
+    
+    # Transformo a objeto espacial
+    datx<-dat
+    coordinates(datx) <- ~east + north
+    
+    # Hago un gráfico rápido
+    plot(datx)
+    
+    # Inspecciono que datx no posee referencia espacial "crs"
+    # Ahora le aplico la misma referencia espacial que el objeto cot
+    
+    crs(datx) <- crs(cot)
+    ```
+
+#### Hacer un gráfico rápido
+
+    ```r
+    plot(ras)
+    plot(cot, add=T)
+    plot(datx, add=T, col="red")
+    ```    
+    
+##  2.- Hacer cortes y máscaras
+
+Existen dos funciones principales para realizar cortes y máscaras de un ráster, la función crop() y la función mask().
+
+  - La función crop() realiza cortes según la extensión de otro objeto (cortes cuadrados), mientras que,
+  
+  - La función mask() realiza cortes según la forma de otro objeto (cortes con forma)
+  
+### 2.1 Corte con crop
+
+    ```r
+    ras_cut <- crop(ras, cot)
+    plot(ras_cut)
+    plot(cot, add=T)
+
+    ras_cut2 <- crop(ras, datx)
+    plot(ras_cut2)
+    plot(datx, add=T)
+    ``` 
+
+<font color='red'> Ejercicio: explorar argumentos de la función crop, para optener ayuda, escribir ?crop </font>
+
+### 2.2 Corte con mask
+
+    ```r
+    # Seleccionaré primero alguna entidad del polígono de cot antes, para no colapsar el computador
+    cot_tes<-cot[cot$TIPO_CIENT=="Matorral de Tessaria absinthioides",]
+    
+    ras_mask <- mask(ras, cot_tes)
+    plot(ras_mask)
+    plot(cot, add=T)
+    ``` 
+
+<font color='red'> 
+Ejercicio: realizar una máscara con los sitios de cobertura densa
+
+Pista: cot$COBERTURA  
+</font>
+
+
+## 3.- Transformar de raster a tabla y asignar atributos desde polígonos
+
+### 3.1 Convertir un raster a tabla
+
+Convertir un raster o un conjunto de rásters en una tabla es muy útil para poder visualizar mejor los valores, realizar análisis más complejos y almacenar
+la información:
+
+- Primero aprenderemos cómo hacer un stack, para hacerlo más entretenido
+
+- Luego cortaremos nuestro stack con la función crop para disminuir el área
+
+- Convertiremos nuestro stack en una tabla
+
+    ```r
+    # Para hacer un stack necesitamos primero listar todos los archivos que queremos que se guarden en él
+    # En este caso, las imágenes tif que se encunetran en la carpeta datos
+    
+    l<-list.files("./datos", ".tif$", full.names = T)
+    
+    # Ahora realizo el stack, es tan fácil como utilizar la función stack
+    
+    s<-stack(l)
+    plot(s)    
+    
+    # Un stack se maneja igual que un raster único, así que lo cortaré con la función mask()
+    
+    s_cut <- mask(s, cot_tes)
+    plot(s_cut)
+    
+    # Ahora puedo convertirlo en tabla con la función rasterToPoints()
+    
+    ras_tab <- data.frame(rasterToPoints(s_cut))
+    ``` 
+
+### 3.2 Asignar atributos desde polígonos
+
+Para asignar atributos desde polígonos, debemos utilizar la función over()
+
+- Es importante notar que aplico la función a dos objetos espaciales, por lo que tengo que convertir mi stack a puntos espaciales agregando el argumento "spatial = T"
+
+    ```r
+    s_spp <- rasterToPoints(s_cut, spatial = T)
+    ov<-over(s_spp, cot_tes)
+    
+    # PERO SON SÓLO LOS VALORES DEL OBJETO COT!!!
+    # Así que realizo un arreglo para que queden juntos aprovechando que ya tengo mi conversión a tabla del punto anterior
+    
+    ov<-data.frame(ras_tab, over(s_spp, cot_tes))
+    ```
+    
+## 4.- Interpolar valores desde puntos y transformalo en ráster
+    Para este ejercicio tengo mi dataset de promedios de variables meteorológicas
+    
+- Primero seleccionaremos aquellas columnas pertenecientes al mes de enero y de la variable precipitación desde mi archivo datx
+    
+    ```r
+    pp_01 <- datx[which(datx$variable=="Prec"&datx$month=="01"),]
+
+    # Duplico el objeto para que no dependa del mes
+    pp_x<-pp_01
+    
+    ```
+- Con mis datos de entrada, puedo empezar el proceso de interpolación, para eso instalo el paquete "gstat"
+- Luego genero una grilla vacía
+- Y luego interpolo con idw
+
+
+    ```r
+    # install.packages("gstat")
+    library(gstat) # cargar la librería
+    
+    # Rescato los límites máximos y los mínimos para hacer la grilla vacía
+    x.range <- (range(pp_x@coords[,1]))
+    y.range <- (range(pp_x@coords[,2]))
+    
+    # Genero la grilla vacía en cuadrantes cada 1000 metros y le doy proyección
+    grd <- expand.grid(x=seq(from=x.range[1], to=x.range[2], by=1000), y=seq(from=y.range[1], to=y.range[2], by=1000))
+    coordinates(grd) <- ~ x+y
+    crs(grd)<-crs(pp_01)
+    gridded(grd) <- TRUE
+    
+    # Hago el idw
+    idw<-idw(formula=mean ~ 1, locations=pp_x, newdata=grd, idp=3)
+    
+    # Grafico
+    plot(idw)
+    ```
+<font color='red'> 
+
+Ejercicio 1: explorar diferentes valores de idp, qué ocurre?
+
+Ejercicio 2: tarea. Realizar otro método de interpolación
+</font>    
