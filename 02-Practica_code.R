@@ -1,29 +1,27 @@
-stwd("DIRECTORIO DE TRABAJO")
-
 
 ################## 1.- Cargar datos ##################
 ### 1.2 Cargar rasters y vectores
 
 # install.packages("raster")
-library(raster) # cargar la librería
-ras <- raster("datos/L20171117.tif")
+library(raster) # cargar la librerÃ­a
+ras <- raster("datos/L20170813.tif")
 cot<- shapefile("datos/cot.shp")
 
-### 1.3 Hacer un gráfico rápido
+### 1.3 Hacer un grÃ¡fico rÃ¡pido
 
 plot(ras)
 plot(cot, add=T)
 
 ### 1.4 Cargar datos desde un dataframe
 # install.packages("openxlsx")
-library(openxlsx) # cargar la librería
+library(openxlsx) # cargar la librerÃ­a
 dat<-read.xlsx("datos/datostempypp.xlsx")
 
 # Transformo a objeto espacial
 datx<-dat
 coordinates(datx) <- ~east + north
 
-# Hago un gráfico rápido
+# Hago un grÃ¡fico rÃ¡pido
 plot(datx)
 
 datx
@@ -32,13 +30,13 @@ datx
 
 crs(datx) <- crs(cot)
 
-### 1.5 Hacer un gráfico rápido
+### 1.5 Hacer un grÃ¡fico rÃ¡pido
 plot(ras)
 plot(cot, add=T)
 plot(datx, add=T, col="red")
 
 
-################## 2.- Hacer cortes y máscaras ##################
+################## 2.- Hacer cortes y mÃ¡scaras ##################
 
 ### 2.1 Corte con crop
 
@@ -52,7 +50,7 @@ plot(datx, add=T)
 
 
 ### 2.2 Corte con mask
-# Seleccionaré primero alguna entidad del polígono de cot antes, para no colapsar el computador
+# Seleccionar primero alguna entidad del polÃ­gono de cot antes, para no colapsar el computador
 cot_tes<-cot[cot$TIPO_CIENT=="Matorral de Tessaria absinthioides",]
 
 ras_mask <- mask(ras, cot_tes)
@@ -60,38 +58,38 @@ plot(ras_mask)
 plot(cot, add=T)
 
   
-################## 3.- Transformar de raster a tabla y asignar atributos desde polígonos ##################
+################## 3.- Transformar de raster a tabla y asignar atributos desde polÃ­gonos ##################
 ### 3.1 Convertir un raster a tabla
-# Para hacer un stack necesitamos primero listar todos los archivos que queremos que se guarden en él
-# En este caso, las imágenes tif que se encunetran en la carpeta datos
+# Para hacer un stack necesitamos primero listar todos los archivos que queremos que se guarden en Ã©l
+# En este caso, las imÃ¡genes tif que se encunetran en la carpeta datos
 
 l<-list.files("./datos", ".tif$", full.names = T)
 
-# Ahora realizo el stack, es tan fácil como utilizar la función stack
+# Ahora realizo el stack, es tan fÃ¡cil como utilizar la funciÃ³n stack
 s<-stack(l)
 plot(s)    
 
-# Un stack se maneja igual que un raster único, así que lo cortaré con la función mask()
+# Un stack se maneja igual que un raster Ãºnico, asÃ­ que lo cortarÃ© con la funciÃ³n mask()
 
 s_cut <- mask(s, cot_tes)
 plot(s_cut)
 
-# Ahora puedo convertirlo en tabla con la función rasterToPoints()
+# Ahora puedo convertirlo en tabla con la funciÃ³n rasterToPoints()
 
 ras_tab <- data.frame(rasterToPoints(s_cut))
 
-### 3.2 Asignar atributos desde polígonos
+### 3.2 Asignar atributos desde polÃ­gonos
 
 s_spp <- rasterToPoints(s_cut, spatial = T)
 ov<-over(s_spp, cot_tes)
 
-# PERO SON SÓLO LOS VALORES DEL OBJETO COT!!!
-# Así que realizo un arreglo para que queden juntos aprovechando que ya tengo mi conversión a tabla del punto anterior
+# PERO SON SÃ“LO LOS VALORES DEL OBJETO COT!!!
+# AsÃ­ que realizo un arreglo para que queden juntos aprovechando que ya tengo mi conversiÃ³n a tabla del punto anterior
 
 ov<-data.frame(ras_tab, over(s_spp, cot_tes))
 
 
-################## 4.- Interpolar valores desde puntos y transformalo en ráster ##################
+################## 4.- Interpolar valores desde puntos y transformalo en rÃ¡ster ##################
 
 pp_01 <- datx[which(datx$variable=="Prec"&datx$month=="01"),]
 
@@ -99,13 +97,13 @@ pp_01 <- datx[which(datx$variable=="Prec"&datx$month=="01"),]
 pp_x<-pp_01
 
 # install.packages("gstat")
-library(gstat) # cargar la librería
+library(gstat) # cargar la librerÃ­a
 
-# Rescato los límites máximos y los mínimos para hacer la grilla vacía
+# Rescato los lÃ­mites mÃ¡ximos y los mÃ­nimos para hacer la grilla vacÃ­a
 x.range <- (range(pp_x@coords[,1]))
 y.range <- (range(pp_x@coords[,2]))
 
-# Genero la grilla vacía en cuadrantes cada 1000 metros y le doy proyección
+# Genero la grilla vacÃ­a en cuadrantes cada 1000 metros y le doy proyecciÃ³n
 grd <- expand.grid(x=seq(from=x.range[1], to=x.range[2], by=1000), y=seq(from=y.range[1], to=y.range[2], by=1000))
 coordinates(grd) <- ~ x+y
 crs(grd)<-crs(pp_01)
